@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,14 +17,21 @@ from src.infrastructure.api.routes import (
 from src.infrastructure.persistence.database import init_db
 
 
+def _cors_origins() -> list[str]:
+    raw = os.environ.get("CORS_ALLOW_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Boreal Passage Simulation Engine",
         version="2.0.0",
     )
+    # NOTE: `allow_origins=["*"]` is invalid when `allow_credentials=True` — browsers
+    # reject the response. Use an explicit origin list (override via CORS_ALLOW_ORIGINS).
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

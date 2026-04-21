@@ -5,18 +5,33 @@ import { Header } from "@/components/mil/Header";
 import { Panel } from "@/components/mil/Panel";
 import {
   deletePlaybook,
-  getKnowledgeSummary,
-  listDoctrine,
-  listMatches,
-  listPatterns,
-  listPlaybooks,
+  getKnowledgeBundle,
   type AttackPattern,
   type DefensePlaybook,
   type DoctrineEntry,
+  type KnowledgeBundle,
 } from "@/lib/api";
-import { cachedFetch, invalidate } from "@/lib/cache";
+import { getCached, invalidate, setCached } from "@/lib/cache";
 
 const CACHE_TTL = 5 * 60_000;   // 5 minutes
+const BUNDLE_KEY = "kb:bundle";
+
+function applyBundle(
+  b: KnowledgeBundle,
+  setters: {
+    setCounts: (v: Record<string, number>) => void;
+    setDoctrine: (v: DoctrineEntry[]) => void;
+    setPatterns: (v: AttackPattern[]) => void;
+    setPlaybooks: (v: DefensePlaybook[]) => void;
+    setMatches: (v: Array<Record<string, unknown>>) => void;
+  },
+) {
+  setters.setCounts(b.counts);
+  setters.setDoctrine(b.doctrine);
+  setters.setPatterns(b.patterns);
+  setters.setPlaybooks(b.playbooks);
+  setters.setMatches(b.matches);
+}
 
 export default function KnowledgePage() {
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -28,28 +43,28 @@ export default function KnowledgePage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"doctrine" | "patterns" | "playbooks" | "matches">("doctrine");
 
-  const loadAll = (force = false) => {
-    if (force) {
-      invalidate("kb");
-    }
-    return Promise.all([
-      cachedFetch("kb:summary", CACHE_TTL, getKnowledgeSummary),
-      cachedFetch("kb:doctrine", CACHE_TTL, () => listDoctrine()),
-      cachedFetch("kb:patterns", CACHE_TTL, listPatterns),
-      cachedFetch("kb:playbooks", CACHE_TTL, listPlaybooks),
-      cachedFetch("kb:matches", CACHE_TTL, () => listMatches(50)),
-    ])
-      .then(([kb, d, p, pb, m]) => {
-        setCounts(kb.counts);
-        setDoctrine(d.entries);
-        setPatterns(p.patterns);
-        setPlaybooks(pb.playbooks);
-        setMatches(m.matches);
+  const setters = { setCounts, setDoctrine, setPatterns, setPlaybooks, setMatches };
+
+  const revalidate = () =>
+    getKnowledgeBundle(50)
+      .then((b) => {
+        setCached(BUNDLE_KEY, b);
+        applyBundle(b, setters);
       })
       .catch((e) => setError(String(e)));
+
+  const loadAll = (force = false) => {
+    if (force) invalidate("kb");
+    return revalidate();
   };
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    // Synchronously paint from localStorage cache (no network), then revalidate.
+    const hit = getCached<KnowledgeBundle>(BUNDLE_KEY, CACHE_TTL);
+    if (hit) applyBundle(hit, setters);
+    revalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onRefresh = () => loadAll(true);
 

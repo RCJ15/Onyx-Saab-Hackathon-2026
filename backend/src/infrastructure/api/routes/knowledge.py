@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from src.infrastructure.api.dependencies import (
     get_active_settings_or_bootstrap,
@@ -11,21 +11,24 @@ from src.infrastructure.api.dependencies import (
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
 
+def _counts(kb, settings_id: str) -> dict:
+    return {
+        "attack_plans": kb.attack_plans.count_by_settings(settings_id),
+        "attack_patterns": kb.attack_patterns.count_by_settings(settings_id),
+        "defense_playbooks": kb.defense_playbooks.count_by_settings(settings_id),
+        "match_results": kb.match_results.count_by_settings(settings_id),
+        "doctrine_entries": kb.doctrine.count_active_by_settings(settings_id),
+    }
+
+
 @router.get("/summary")
 def summary():
     settings = get_active_settings_or_bootstrap()
     kb = get_kb()
-    # Use cheap COUNT(*) for matches; other tables are small enough to list directly
     return {
         "settings_id": settings.settings_id,
         "settings_name": settings.name,
-        "counts": {
-            "attack_plans": len(kb.attack_plans.list_by_settings(settings.settings_id)),
-            "attack_patterns": len(kb.attack_patterns.list_by_settings(settings.settings_id)),
-            "defense_playbooks": len(kb.defense_playbooks.list_by_settings(settings.settings_id)),
-            "match_results": kb.match_results.count_by_settings(settings.settings_id),
-            "doctrine_entries": len(kb.doctrine.list_active(settings.settings_id)),
-        },
+        "counts": _counts(kb, settings.settings_id),
     }
 
 
@@ -65,4 +68,30 @@ def pattern_matches(pattern_id: str, top_k: int = 10):
             }
             for m in matches
         ],
+    }
+
+
+@router.get("/bundle")
+def bundle(matches_limit: int = 50):
+    """
+    Single-call endpoint for the Knowledge Base UI: counts + doctrine + patterns +
+    playbooks + recent matches in one round-trip. Replaces 5 separate requests.
+    """
+    settings = get_active_settings_or_bootstrap()
+    kb = get_kb()
+    sid = settings.settings_id
+
+    doctrine = kb.doctrine.list_active(sid)
+    patterns = kb.attack_patterns.list_by_settings(sid)
+    playbooks = kb.defense_playbooks.list_by_settings(sid)
+    matches = kb.match_results.list_summary_by_settings(sid, limit=matches_limit)
+
+    return {
+        "settings_id": sid,
+        "settings_name": settings.name,
+        "counts": _counts(kb, sid),
+        "doctrine": [e.to_dict() for e in doctrine],
+        "patterns": [p.to_dict() for p in patterns],
+        "playbooks": [p.to_dict() for p in playbooks],
+        "matches": matches,
     }

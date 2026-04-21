@@ -190,6 +190,13 @@ class SqlAttackPlanRepo(AttackPlanRepositoryPort):
         finally:
             session.close()
 
+    def count_by_settings(self, settings_id: str) -> int:
+        session = get_session()
+        try:
+            return session.query(AttackPlanModel).filter_by(settings_id=settings_id).count()
+        finally:
+            session.close()
+
     def delete(self, plan_id: str) -> bool:
         session = get_session()
         try:
@@ -267,6 +274,13 @@ class SqlAttackPatternRepo(AttackPatternRepositoryPort):
         try:
             return [self._to_domain(m) for m in
                     session.query(AttackPatternModel).filter_by(settings_id=settings_id).all()]
+        finally:
+            session.close()
+
+    def count_by_settings(self, settings_id: str) -> int:
+        session = get_session()
+        try:
+            return session.query(AttackPatternModel).filter_by(settings_id=settings_id).count()
         finally:
             session.close()
 
@@ -354,6 +368,13 @@ class SqlDefensePlaybookRepo(DefensePlaybookRepositoryPort):
         try:
             return [self._to_domain(m) for m in
                     session.query(DefensePlaybookModel).filter_by(settings_id=settings_id).all()]
+        finally:
+            session.close()
+
+    def count_by_settings(self, settings_id: str) -> int:
+        session = get_session()
+        try:
+            return session.query(DefensePlaybookModel).filter_by(settings_id=settings_id).count()
         finally:
             session.close()
 
@@ -621,6 +642,17 @@ class SqlDoctrineRepo(DoctrineRepositoryPort):
                     .filter_by(settings_id=settings_id, category=category)
                     .order_by(DoctrineEntryModel.version.desc())
                     .all()]
+        finally:
+            session.close()
+
+    def count_active_by_settings(self, settings_id: str) -> int:
+        session = get_session()
+        try:
+            return (
+                session.query(DoctrineEntryModel)
+                .filter_by(settings_id=settings_id, is_active=True)
+                .count()
+            )
         finally:
             session.close()
 

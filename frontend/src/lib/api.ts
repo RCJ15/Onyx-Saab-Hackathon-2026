@@ -277,6 +277,19 @@ export const listTrainingJobs = () =>
 
 // ==== Knowledge ====
 
+export interface KnowledgeBundle {
+  settings_id: string;
+  settings_name: string;
+  counts: Record<string, number>;
+  doctrine: DoctrineEntry[];
+  patterns: AttackPattern[];
+  playbooks: DefensePlaybook[];
+  matches: Array<Record<string, unknown>>;
+}
+
+export const getKnowledgeBundle = (matches_limit: number = 50) =>
+  fetchAPI<KnowledgeBundle>(`/knowledge/bundle?matches_limit=${matches_limit}`);
+
 export const getKnowledgeSummary = () =>
   fetchAPI<{ settings_id: string; settings_name: string; counts: Record<string, number> }>(
     "/knowledge/summary",
