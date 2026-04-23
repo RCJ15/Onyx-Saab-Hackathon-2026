@@ -164,6 +164,7 @@ export interface DoctrineEntry {
   entry_id: string;
   settings_id: string;
   category: string;
+  name: string;
   principle_text: string;
   trigger_conditions: Record<string, unknown>;
   supporting_match_ids: string[];
@@ -297,6 +298,16 @@ export const getKnowledgeSummary = () =>
 export const listDoctrine = (category?: string) =>
   fetchAPI<{ entries: DoctrineEntry[]; total: number }>(
     category ? `/knowledge/doctrine?category=${category}` : "/knowledge/doctrine",
+  );
+export const renameDoctrine = (entry_id: string, name: string) =>
+  fetchAPI<{ entry_id: string; name: string; updated_at: string }>(
+    `/knowledge/doctrine/${entry_id}/name`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) },
+  );
+export const renamePlaybook = (playbook_id: string, name: string) =>
+  fetchAPI<{ playbook_id: string; name: string }>(
+    `/defense-playbooks/${playbook_id}/name`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) },
   );
 export const listPatterns = () =>
   fetchAPI<{ patterns: AttackPattern[]; total: number }>("/knowledge/patterns");

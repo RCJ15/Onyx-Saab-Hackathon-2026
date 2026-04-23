@@ -356,6 +356,9 @@ class DefensePlaybookUseCase:
     def delete(self, playbook_id: str) -> bool:
         return self._kb.defense_playbooks.delete(playbook_id)
 
+    def rename(self, playbook_id: str, name: str) -> bool:
+        return self._kb.defense_playbooks.rename(playbook_id, name)
+
 
 # =======================================================================
 # Run Match (simulate + store + optional AI analysis)

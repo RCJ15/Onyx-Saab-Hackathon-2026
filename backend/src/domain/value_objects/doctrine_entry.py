@@ -16,6 +16,7 @@ class DoctrineEntry:
     settings_id: str
     category: str                                   # 'multi_wave_defense', 'bomber_counter', etc.
     principle_text: str                             # the lesson
+    name: str = ""                                  # human-readable short title
     trigger_conditions: dict = field(default_factory=dict)  # when this applies
     supporting_match_ids: list[str] = field(default_factory=list)
     confidence_score: float = 0.5
@@ -31,6 +32,7 @@ class DoctrineEntry:
             "entry_id": self.entry_id,
             "settings_id": self.settings_id,
             "category": self.category,
+            "name": self.name,
             "principle_text": self.principle_text,
             "trigger_conditions": self.trigger_conditions,
             "supporting_match_ids": self.supporting_match_ids,
@@ -49,6 +51,7 @@ class DoctrineEntry:
             entry_id=data["entry_id"],
             settings_id=data["settings_id"],
             category=data.get("category", "general"),
+            name=data.get("name", ""),
             principle_text=data.get("principle_text", ""),
             trigger_conditions=data.get("trigger_conditions", {}),
             supporting_match_ids=data.get("supporting_match_ids", []),

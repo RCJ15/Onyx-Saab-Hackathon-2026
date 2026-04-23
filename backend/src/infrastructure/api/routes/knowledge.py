@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException
 
 from src.infrastructure.api.dependencies import (
     get_active_settings_or_bootstrap,
     get_kb,
 )
+from src.infrastructure.api.schemas import RenameDoctrineRequest
 
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -41,6 +44,16 @@ def list_doctrine(category: str | None = None):
         "entries": [e.to_dict() for e in entries],
         "total": len(entries),
     }
+
+
+@router.patch("/doctrine/{entry_id}/name")
+def rename_doctrine(entry_id: str, body: RenameDoctrineRequest):
+    kb = get_kb()
+    updated_at = datetime.now(timezone.utc).isoformat()
+    ok = kb.doctrine.rename(entry_id, body.name.strip(), updated_at)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Doctrine entry not found")
+    return {"entry_id": entry_id, "name": body.name.strip(), "updated_at": updated_at}
 
 
 @router.get("/patterns")

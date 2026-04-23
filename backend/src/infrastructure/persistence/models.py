@@ -88,6 +88,7 @@ class DoctrineEntryModel(DBBase):
     entry_id = Column(String, primary_key=True)
     settings_id = Column(String, nullable=False, index=True)
     category = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=True, default="")
     principle_text = Column(Text, nullable=False)
     trigger_conditions_json = Column(Text, nullable=True)
     supporting_match_ids_json = Column(Text, nullable=True)

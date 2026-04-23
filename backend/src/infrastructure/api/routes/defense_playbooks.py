@@ -6,7 +6,7 @@ from src.infrastructure.api.dependencies import (
     get_active_settings_or_bootstrap,
     get_playbook_uc,
 )
-from src.infrastructure.api.schemas import GenerateAIPlaybookRequest
+from src.infrastructure.api.schemas import GenerateAIPlaybookRequest, RenamePlaybookRequest
 
 
 router = APIRouter(prefix="/defense-playbooks", tags=["defense-playbooks"])
@@ -52,6 +52,14 @@ def create_baseline():
     uc = get_playbook_uc()
     p = uc.create_baseline(settings)
     return p.to_dict()
+
+
+@router.patch("/{playbook_id}/name")
+def rename_playbook(playbook_id: str, body: RenamePlaybookRequest):
+    uc = get_playbook_uc()
+    if not uc.rename(playbook_id, body.name.strip()):
+        raise HTTPException(404, "Playbook not found")
+    return {"playbook_id": playbook_id, "name": body.name.strip()}
 
 
 @router.delete("/{playbook_id}")

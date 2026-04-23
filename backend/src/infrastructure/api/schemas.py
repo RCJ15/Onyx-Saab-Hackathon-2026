@@ -131,6 +131,7 @@ class DoctrineEntryResponse(BaseModel):
     entry_id: str
     settings_id: str
     category: str
+    name: str = ""
     principle_text: str
     confidence_score: float
     version: int
@@ -138,3 +139,11 @@ class DoctrineEntryResponse(BaseModel):
     human_edited: bool
     created_at: str
     updated_at: str
+
+
+class RenameDoctrineRequest(BaseModel):
+    name: str
+
+
+class RenamePlaybookRequest(BaseModel):
+    name: str

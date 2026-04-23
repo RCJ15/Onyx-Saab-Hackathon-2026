@@ -390,6 +390,18 @@ class SqlDefensePlaybookRepo(DefensePlaybookRepositoryPort):
         finally:
             session.close()
 
+    def rename(self, playbook_id: str, name: str) -> bool:
+        session = get_session()
+        try:
+            m = session.query(DefensePlaybookModel).get(playbook_id)
+            if not m:
+                return False
+            m.name = name
+            session.commit()
+            return True
+        finally:
+            session.close()
+
     @staticmethod
     def _to_domain(m: DefensePlaybookModel) -> DefensePlaybook:
         return DefensePlaybook.from_dict({
@@ -587,6 +599,7 @@ class SqlDoctrineRepo(DoctrineRepositoryPort):
         try:
             existing = session.query(DoctrineEntryModel).get(entry.entry_id)
             if existing:
+                existing.name = entry.name
                 existing.principle_text = entry.principle_text
                 existing.confidence_score = entry.confidence_score
                 existing.is_active = entry.is_active
@@ -598,6 +611,7 @@ class SqlDoctrineRepo(DoctrineRepositoryPort):
                     entry_id=entry.entry_id,
                     settings_id=entry.settings_id,
                     category=entry.category,
+                    name=entry.name,
                     principle_text=entry.principle_text,
                     trigger_conditions_json=json.dumps(entry.trigger_conditions),
                     supporting_match_ids_json=json.dumps(entry.supporting_match_ids),
@@ -656,6 +670,20 @@ class SqlDoctrineRepo(DoctrineRepositoryPort):
         finally:
             session.close()
 
+    def rename(self, entry_id: str, name: str, updated_at: str) -> bool:
+        session = get_session()
+        try:
+            m = session.query(DoctrineEntryModel).get(entry_id)
+            if not m:
+                return False
+            m.name = name
+            m.human_edited = True
+            m.updated_at = updated_at
+            session.commit()
+            return True
+        finally:
+            session.close()
+
     def supersede(self, old_entry_id: str, new_entry: DoctrineEntry) -> str:
         session = get_session()
         try:
@@ -676,6 +704,7 @@ class SqlDoctrineRepo(DoctrineRepositoryPort):
             entry_id=m.entry_id,
             settings_id=m.settings_id,
             category=m.category,
+            name=getattr(m, "name", "") or "",
             principle_text=m.principle_text,
             trigger_conditions=json.loads(m.trigger_conditions_json or "{}"),
             supporting_match_ids=json.loads(m.supporting_match_ids_json or "[]"),

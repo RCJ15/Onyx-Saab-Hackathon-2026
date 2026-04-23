@@ -6,6 +6,8 @@ import { Panel } from "@/components/mil/Panel";
 import {
   deletePlaybook,
   getKnowledgeBundle,
+  renameDoctrine,
+  renamePlaybook,
   type AttackPattern,
   type DefensePlaybook,
   type DoctrineEntry,
@@ -42,6 +44,10 @@ export default function KnowledgePage() {
   const [matches, setMatches] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"doctrine" | "patterns" | "playbooks" | "matches">("doctrine");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renamingPlaybookId, setRenamingPlaybookId] = useState<string | null>(null);
+  const [renamePlaybookValue, setRenamePlaybookValue] = useState("");
 
   const setters = { setCounts, setDoctrine, setPatterns, setPlaybooks, setMatches };
 
@@ -146,6 +152,44 @@ export default function KnowledgePage() {
                       {d.human_edited && " · EDITED"}
                     </span>
                   </div>
+                  {renamingId === d.entry_id ? (
+                    <form
+                      className="flex gap-2 mb-1"
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        await renameDoctrine(d.entry_id, renameValue);
+                        setDoctrine((prev) =>
+                          prev.map((x) =>
+                            x.entry_id === d.entry_id
+                              ? { ...x, name: renameValue, human_edited: true }
+                              : x,
+                          ),
+                        );
+                        setRenamingId(null);
+                      }}
+                    >
+                      <input
+                        className="mil-input flex-1 text-sm"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        autoFocus
+                      />
+                      <button type="submit" className="mil-btn mil-btn-sm">SAVE</button>
+                      <button type="button" className="mil-btn mil-btn-sm mil-btn-dim" onClick={() => setRenamingId(null)}>CANCEL</button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm mil-value font-semibold">
+                        {d.name || <span className="text-dim italic">unnamed</span>}
+                      </span>
+                      <button
+                        className="text-[10px] text-dim hover:text-accent font-mono underline"
+                        onClick={() => { setRenamingId(d.entry_id); setRenameValue(d.name || ""); }}
+                      >
+                        rename
+                      </button>
+                    </div>
+                  )}
                   <div className="text-sm mil-value mb-1">{d.principle_text}</div>
                   {Object.keys(d.trigger_conditions || {}).length > 0 && (
                     <div className="text-[10px] text-dim font-mono mt-1">
@@ -233,9 +277,48 @@ export default function KnowledgePage() {
                                 ? "var(--surface-2)"
                                 : undefined,
                           }}>
-                        <td>
-                          <div className="mil-value text-xs">{p.name}</div>
-                          <div className="text-[10px] text-dim">{p.playbook_id}</div>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          {renamingPlaybookId === p.playbook_id ? (
+                            <form
+                              className="flex gap-1"
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                await renamePlaybook(p.playbook_id, renamePlaybookValue);
+                                setPlaybooks((prev) =>
+                                  prev.map((x) =>
+                                    x.playbook_id === p.playbook_id
+                                      ? { ...x, name: renamePlaybookValue }
+                                      : x,
+                                  ),
+                                );
+                                if (selectedPlaybook?.playbook_id === p.playbook_id)
+                                  setSelectedPlaybook((prev) => prev ? { ...prev, name: renamePlaybookValue } : prev);
+                                setRenamingPlaybookId(null);
+                              }}
+                            >
+                              <input
+                                className="mil-input text-xs flex-1"
+                                value={renamePlaybookValue}
+                                onChange={(e) => setRenamePlaybookValue(e.target.value)}
+                                autoFocus
+                              />
+                              <button type="submit" className="mil-btn mil-btn-sm">OK</button>
+                              <button type="button" className="mil-btn mil-btn-sm mil-btn-dim" onClick={() => setRenamingPlaybookId(null)}>✕</button>
+                            </form>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-1">
+                                <span className="mil-value text-xs">{p.name}</span>
+                                <button
+                                  className="text-[9px] text-dim hover:text-accent font-mono underline"
+                                  onClick={() => { setRenamingPlaybookId(p.playbook_id); setRenamePlaybookValue(p.name); }}
+                                >
+                                  rename
+                                </button>
+                              </div>
+                              <div className="text-[10px] text-dim">{p.playbook_id}</div>
+                            </>
+                          )}
                         </td>
                         <td>
                           <span className={`mil-badge ${
