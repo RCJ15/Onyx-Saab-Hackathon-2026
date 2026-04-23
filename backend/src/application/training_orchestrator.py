@@ -160,18 +160,54 @@ class TrainingOrchestrator:
     async def _run_job(
         self, job_id: str, settings: Settings, config: dict,
     ) -> None:
-        """Background execution."""
+        """Background execution.
+
+        Progress is reported as a weighted sum across all phases, not just
+        simulations, so the bar reflects time remaining rather than hitting
+        100% as soon as the CPU-bound sim phase ends.
+        """
         self._update_job_status(job_id, status="running")
 
+        # Relative time weights per unit of work. LLM calls dominate wall time;
+        # simulations run in parallel on CPU cores. These are approximations
+        # tuned so the bar advances at a roughly uniform rate across phases.
+        W_PLAYBOOK = 5   # single LLM call (0 if reusing an existing playbook)
+        W_SIM = 1        # per simulation
+        W_ANALYSIS = 4   # per match analysis (LLM)
+        W_PERSIST = 1    # total
+        W_SYNTH = 6      # single LLM call on aggregated takeaways
+
         try:
-            # 1. Get or generate the playbook
             playbook_id = config.get("defense_playbook_id")
+            attack_plan_ids = config["attack_plan_ids"]
+            n_plans = len(attack_plan_ids)
+
+            total_weight = (
+                (0 if playbook_id else W_PLAYBOOK)
+                + n_plans * W_SIM
+                + n_plans * W_ANALYSIS
+                + W_PERSIST
+                + W_SYNTH
+            )
+            progress = 0
+            self._update_job_status(
+                job_id, progress_current=0, progress_total=total_weight,
+            )
+            progress_lock = asyncio.Lock()
+
+            async def bump(weight: int) -> None:
+                nonlocal progress
+                async with progress_lock:
+                    progress += weight
+                    self._update_job_status(job_id, progress_current=progress)
+
+            # 1. Get or generate the playbook
+            self._set_phase(job_id, "playbook")
             if playbook_id:
                 playbook = self._kb.defense_playbooks.get(playbook_id)
                 if not playbook:
                     raise ValueError(f"Playbook {playbook_id} not found")
             else:
-                # Generate new playbook from current doctrine
                 playbook = await self._pb_gen.generate(
                     settings,
                     self._kb.doctrine.list_active(settings.settings_id),
@@ -179,9 +215,9 @@ class TrainingOrchestrator:
                     config.get("extra_playbook_prompt", ""),
                 )
                 self._kb.defense_playbooks.save(playbook)
+                await bump(W_PLAYBOOK)
 
             # 2. Pre-fetch all attack plans (DB in main process only)
-            attack_plan_ids = config["attack_plan_ids"]
             plans = []
             for plan_id in attack_plan_ids:
                 plan = self._kb.attack_plans.get(plan_id)
@@ -191,6 +227,7 @@ class TrainingOrchestrator:
                 raise ValueError("No valid attack plans found")
 
             # 3. Run simulations in parallel across N CPU cores
+            self._set_phase(job_id, "simulating")
             loop = asyncio.get_running_loop()
             max_workers = max(1, (os.cpu_count() or 4) - 1)
             sim_args = [(settings, p, playbook) for p in plans]
@@ -204,18 +241,18 @@ class TrainingOrchestrator:
                     loop.run_in_executor(pool, _run_one_sim, args)
                     for args in sim_args
                 ]
-                # Collect as they complete — update progress + kick off analysis
-                completed = 0
                 for i, fut in enumerate(futures):
                     match: MatchResult = await fut
-                    # Map back to the plan that produced this match
                     plan = plans[i]
                     plan_by_match_id[match.match_id] = plan
                     matches.append(match)
-                    completed += 1
-                    self._update_job_status(job_id, progress_current=completed)
+                    await bump(W_SIM)
 
-            # 4. Analyze all matches in parallel (LLM calls async-gathered)
+            # 4. Analyze all matches in parallel (LLM calls async-gathered).
+            # Each task bumps progress as it finishes so the bar keeps moving
+            # even though gather() resolves only when all have completed.
+            self._set_phase(job_id, "analyzing")
+
             async def _analyze(match: MatchResult, plan) -> None:
                 try:
                     analysis, takeaways = await self._analyzer.analyze(
@@ -228,12 +265,14 @@ class TrainingOrchestrator:
                         takeaways_collected.append((match.match_id, t))
                 except Exception as e:
                     match.ai_analysis_text = f"[Analysis failed: {e}]"
+                await bump(W_ANALYSIS)
 
             await asyncio.gather(*[
                 _analyze(m, plan_by_match_id[m.match_id]) for m in matches
             ])
 
             # 5. Persist match results + update champion pointers
+            self._set_phase(job_id, "persisting")
             for match in matches:
                 self._kb.match_results.upsert(match)
                 self._kb.attack_patterns.update_champion(
@@ -242,8 +281,10 @@ class TrainingOrchestrator:
                     match.defense_playbook_id,
                     match.fitness_score,
                 )
+            await bump(W_PERSIST)
 
             # 6. Synthesize doctrine updates
+            self._set_phase(job_id, "synthesizing")
             doctrine_updates = {}
             try:
                 existing_doctrine = self._kb.doctrine.list_active(settings.settings_id)
@@ -258,9 +299,11 @@ class TrainingOrchestrator:
                 )
             except Exception as e:
                 doctrine_updates = {"error": str(e)}
+            await bump(W_SYNTH)
 
             # 7. Complete job
             summary = {
+                "phase": "completed",
                 "playbook_id": playbook.playbook_id,
                 "matches_created": [m.match_id for m in matches],
                 "total_matches": len(matches),
@@ -280,6 +323,7 @@ class TrainingOrchestrator:
             self._update_job_status(
                 job_id,
                 status="completed",
+                progress_current=total_weight,
                 result_summary=summary,
                 completed_at=_now(),
             )
@@ -342,6 +386,20 @@ class TrainingOrchestrator:
                 updated_at=_now(),
             )
             self._kb.doctrine.supersede(old_id, new_entry)
+
+    def _set_phase(self, job_id: str, phase: str) -> None:
+        """Merge a `phase` marker into result_summary_json for live UI labels."""
+        session = get_session()
+        try:
+            m = session.query(TrainingJobModel).get(job_id)
+            if not m:
+                return
+            existing = json.loads(m.result_summary_json) if m.result_summary_json else {}
+            existing["phase"] = phase
+            m.result_summary_json = json.dumps(existing)
+            session.commit()
+        finally:
+            session.close()
 
     def _update_job_status(
         self,

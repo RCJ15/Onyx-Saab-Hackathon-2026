@@ -347,21 +347,56 @@ export default function TrainingPage() {
               <Panel title="CURRENT JOB" badge={activeJob.status.toUpperCase()}>
                 <div className="space-y-2">
                   <div className="font-mono text-[10px] text-dim">{activeJob.job_id}</div>
-                  <div className="text-xs">
-                    {activeJob.progress_current} / {activeJob.progress_total} simulations
-                  </div>
-                  <div className="h-1.5 bg-surface-1 overflow-hidden">
-                    <div
-                      className="h-full transition-all"
-                      style={{
-                        width: `${
-                          (activeJob.progress_current / Math.max(activeJob.progress_total, 1)) * 100
-                        }%`,
-                        background: "var(--accent)",
-                      }}
-                    />
-                  </div>
-                  {activeJob.result_summary && (
+                  {(() => {
+                    const phase = activeJob.result_summary?.phase;
+                    const phaseLabels: Record<string, string> = {
+                      playbook: "Generating playbook",
+                      simulating: "Running simulations",
+                      analyzing: "Analyzing matches",
+                      persisting: "Saving results",
+                      synthesizing: "Synthesizing doctrine",
+                      completed: "Completed",
+                    };
+                    const label =
+                      activeJob.status === "completed"
+                        ? "Completed"
+                        : activeJob.status === "failed"
+                        ? "Failed"
+                        : activeJob.status === "pending"
+                        ? "Queued"
+                        : phase
+                        ? phaseLabels[phase] ?? "Running"
+                        : "Running";
+                    const pct =
+                      activeJob.status === "completed"
+                        ? 100
+                        : Math.min(
+                            100,
+                            Math.round(
+                              (activeJob.progress_current /
+                                Math.max(activeJob.progress_total, 1)) *
+                                100,
+                            ),
+                          );
+                    return (
+                      <>
+                        <div className="flex items-center justify-between text-xs">
+                          <span>{label}</span>
+                          <span className="font-mono text-dim">{pct}%</span>
+                        </div>
+                        <div className="h-1.5 bg-surface-1 overflow-hidden">
+                          <div
+                            className="h-full transition-all"
+                            style={{
+                              width: `${pct}%`,
+                              background: "var(--accent)",
+                            }}
+                          />
+                        </div>
+                      </>
+                    );
+                  })()}
+                  {activeJob.result_summary?.total_matches !== undefined && (
                     <>
                       <hr className="mil-divider" />
                       <MetricRow label="Matches" value={activeJob.result_summary.total_matches ?? 0} />

@@ -133,6 +133,7 @@ export interface TrainingJob {
   started_at: string;
   completed_at: string | null;
   result_summary: {
+    phase?: "playbook" | "simulating" | "analyzing" | "persisting" | "synthesizing" | "completed";
     playbook_id?: string;
     matches_created?: string[];
     total_matches?: number;
