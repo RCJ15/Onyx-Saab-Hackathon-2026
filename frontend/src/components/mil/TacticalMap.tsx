@@ -1,10 +1,30 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useMemo } from "react";
+import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import type { Replay, ReplayTick } from "@/lib/api";
 
 const THEATER_W = 1667;
 const THEATER_H = 1300;
+
+type TerrainFeature = {
+  id: string;
+  name: string;
+  side: string;
+  type: "mainland" | "island" | "peninsula";
+  coordinates: [number, number][];
+};
+
+type MapData = {
+  locations: Array<{
+    id: string;
+    name: string;
+    side: string;
+    subtype: string;
+    x_km: number;
+    y_km: number;
+  }>;
+  terrain: TerrainFeature[];
+};
 
 type Aircraft = {
   id: string;
@@ -43,6 +63,15 @@ export function TacticalMap({
   tickFloat: number;   // fractional tick for smooth interpolation
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [mapData, setMapData] = useState<MapData | null>(null);
+
+  // Load map data from JSON
+  useEffect(() => {
+    fetch("/boreal_passage_map.json")
+      .then((res) => res.json())
+      .then((data: MapData) => setMapData(data))
+      .catch((err) => console.error("Failed to load map data:", err));
+  }, []);
 
   // Build an aircraft-position index by id → [tick, position] pairs for fast lookup
   const aircraftTimeline = useMemo(() => {
@@ -91,29 +120,31 @@ export function TacticalMap({
         ctx.stroke();
       }
 
-      // Landmasses
-      ctx.fillStyle = "rgba(34, 80, 50, 0.25)";
-      ctx.strokeStyle = "rgba(74, 222, 128, 0.3)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(w, 0);
-      ctx.lineTo(w, sy(300, h));
-      ctx.quadraticCurveTo(w * 0.5, sy(380, h), 0, sy(350, h));
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      // Terrain from map data
+      if (mapData) {
+        for (const terrain of mapData.terrain) {
+          const isNorth = terrain.side === "north";
+          const color = isNorth ? "rgba(34, 80, 50, 0.25)" : "rgba(60, 40, 25, 0.25)";
+          const strokeColor = isNorth ? "rgba(74, 222, 128, 0.3)" : "rgba(200, 130, 70, 0.3)";
 
-      ctx.fillStyle = "rgba(60, 40, 25, 0.25)";
-      ctx.strokeStyle = "rgba(200, 130, 70, 0.3)";
-      ctx.beginPath();
-      ctx.moveTo(0, h);
-      ctx.lineTo(w, h);
-      ctx.lineTo(w, sy(1050, h));
-      ctx.quadraticCurveTo(w * 0.5, sy(1010, h), 0, sy(1060, h));
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+          ctx.fillStyle = color;
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+
+          const [firstX, firstY] = terrain.coordinates[0];
+          ctx.moveTo(sx(firstX, w), sy(firstY, h));
+
+          for (let i = 1; i < terrain.coordinates.length; i++) {
+            const [x, y] = terrain.coordinates[i];
+            ctx.lineTo(sx(x, w), sy(y, h));
+          }
+
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
 
       ctx.fillStyle = "rgba(74, 222, 128, 0.08)";
       ctx.font = "bold 16px monospace";
@@ -312,7 +343,7 @@ export function TacticalMap({
       ).length;
       ctx.fillText(`AIRBORNE: ${airborneCount}`, w - 8, 16);
     },
-    [replay, tickFloat],
+    [replay, tickFloat, mapData],
   );
 
   useEffect(() => {
