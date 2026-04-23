@@ -220,10 +220,7 @@ a state delta, respond with one of these action shapes.
 
 3. Update the playbook (when pattern changes):
    {"action": "update_playbook", "rationale": "...", "patch": {...}}
-
-4. Escalate to human (rare, high severity situations):
-   {"action": "escalate", "severity": "high", "rationale": "..."}
-
+   
 ## Critical
 - Respond with ONLY JSON. No markdown, no prose.
 - "continue" is fine 90% of the time. Only intervene when something unusual happens.

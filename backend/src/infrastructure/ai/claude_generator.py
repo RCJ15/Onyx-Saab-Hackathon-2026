@@ -9,7 +9,7 @@ import httpx
 
 from src.domain.entities.attack_plan import AttackPlan, AttackPlanSource
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 SYSTEM_PROMPT = """You are a military attack planner AI for a simulation engine. You generate attack plans as JSON.
 
@@ -70,38 +70,36 @@ Return ONLY valid JSON, no markdown:
 
 
 async def generate_attack_plan_with_claude(prompt: str) -> AttackPlan:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not set")
+        raise ValueError("OPENROUTER_API_KEY not set")
 
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    model = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4-6")
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
-            ANTHROPIC_API_URL,
+            OPENROUTER_API_URL,
             headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
             },
             json={
                 "model": model,
                 "max_tokens": 4096,
-                "system": SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
             },
         )
         if response.status_code >= 400:
             raise ValueError(
-                f"Anthropic API {response.status_code}: {response.text}"
+                f"OpenRouter API {response.status_code}: {response.text}"
             )
         data = response.json()
 
     # Extract text content
-    text = ""
-    for block in data.get("content", []):
-        if block.get("type") == "text":
-            text += block["text"]
+    text = data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
 
     # Parse JSON from response (handle possible markdown wrapping)
     text = text.strip()

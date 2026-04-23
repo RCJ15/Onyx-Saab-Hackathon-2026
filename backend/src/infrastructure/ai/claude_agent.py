@@ -1,8 +1,6 @@
 """
-Claude agent implementing LLMAgentPort. Handles:
-- Prompt caching via anthropic-beta header
-- JSON parse + repair retry
-- Cost tracking
+LLM agent implementing LLMAgentPort via OpenRouter (OpenAI-compatible endpoint).
+Handles JSON parse + repair retry and cost tracking.
 """
 
 from __future__ import annotations
@@ -16,8 +14,8 @@ import httpx
 from src.domain.ports.llm_agent import LLMAgentPort, LLMMessage, LLMResponse
 
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-DEFAULT_MODEL = "claude-sonnet-4-6"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 
 
 class ClaudeAgent(LLMAgentPort):
@@ -27,8 +25,8 @@ class ClaudeAgent(LLMAgentPort):
         model: str | None = None,
         timeout_seconds: float = 120.0,
     ) -> None:
-        self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-        self._model = model or os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL)
+        self._api_key = api_key or os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
+        self._model = model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
         self._timeout = timeout_seconds
 
     async def call(
@@ -41,20 +39,18 @@ class ClaudeAgent(LLMAgentPort):
         stream: bool = False,
     ) -> LLMResponse:
         if not self._api_key:
-            raise ValueError("ANTHROPIC_API_KEY not set")
+            raise ValueError("OPENROUTER_API_KEY not set")
 
-        payload = self._build_payload(
-            system_prompt, messages, max_tokens, temperature, use_cache,
-        )
+        payload = self._build_payload(system_prompt, messages, max_tokens, temperature)
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
-                ANTHROPIC_API_URL,
-                headers=self._headers(use_cache),
+                OPENROUTER_API_URL,
+                headers=self._headers(),
                 json=payload,
             )
             if response.status_code >= 400:
-                raise ValueError(f"Anthropic API {response.status_code}: {response.text}")
+                raise ValueError(f"OpenRouter API {response.status_code}: {response.text}")
             data = response.json()
 
         return self._parse_response(data)
@@ -92,15 +88,11 @@ class ClaudeAgent(LLMAgentPort):
 
     # ==== Helpers ====
 
-    def _headers(self, use_cache: bool) -> dict:
-        h = {
-            "x-api-key": self._api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
         }
-        if use_cache:
-            h["anthropic-beta"] = "prompt-caching-2024-07-31"
-        return h
 
     def _build_payload(
         self,
@@ -108,51 +100,30 @@ class ClaudeAgent(LLMAgentPort):
         messages: list[LLMMessage],
         max_tokens: int,
         temperature: float,
-        use_cache: bool,
     ) -> dict:
-        # System prompt as cacheable block if caching enabled
-        if use_cache and system_prompt:
-            system_blocks = [
-                {"type": "text", "text": system_prompt,
-                 "cache_control": {"type": "ephemeral"}},
-            ]
-        else:
-            system_blocks = system_prompt
-
-        # Messages — support cache breakpoints on user/assistant messages
         built_messages = []
+        if system_prompt:
+            built_messages.append({"role": "system", "content": system_prompt})
         for m in messages:
-            if use_cache and m.cacheable:
-                built_messages.append({
-                    "role": m.role,
-                    "content": [
-                        {"type": "text", "text": m.content,
-                         "cache_control": {"type": "ephemeral"}},
-                    ],
-                })
-            else:
-                built_messages.append({"role": m.role, "content": m.content})
+            built_messages.append({"role": m.role, "content": m.content})
 
         return {
             "model": self._model,
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "system": system_blocks,
             "messages": built_messages,
         }
 
     def _parse_response(self, data: dict) -> LLMResponse:
-        content = ""
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                content += block.get("text", "")
+        choice = data.get("choices", [{}])[0]
+        content = choice.get("message", {}).get("content", "") or ""
         usage = data.get("usage", {})
         return LLMResponse(
             content=content.strip(),
-            input_tokens=usage.get("input_tokens", 0),
-            output_tokens=usage.get("output_tokens", 0),
-            cached_tokens=usage.get("cache_read_input_tokens", 0),
-            stop_reason=data.get("stop_reason", ""),
+            input_tokens=usage.get("prompt_tokens", 0),
+            output_tokens=usage.get("completion_tokens", 0),
+            cached_tokens=0,
+            stop_reason=choice.get("finish_reason", ""),
             raw=data,
         )
 
