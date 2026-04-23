@@ -9,6 +9,7 @@ import {
   deleteSettings,
   getActiveSettings,
   listSettings,
+  resetAllData,
   type Settings,
   type SettingsDetail,
 } from "@/lib/api";
@@ -19,6 +20,7 @@ export default function SettingsPage() {
   const [active, setActive] = useState<SettingsDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [newName, setNewName] = useState("Boreal Passage — Custom");
 
   const refresh = async () => {
@@ -52,6 +54,26 @@ export default function SettingsPage() {
       await activateSettings(id);
       await refresh();
     } catch (e) { setError(String(e)); }
+  };
+
+  const handleResetAll = async () => {
+    const confirmed = confirm(
+      "⚠ DANGER — IRREVERSIBLE ACTION\n\n" +
+      "This will permanently delete ALL data in the database:\n" +
+      "  • All settings\n" +
+      "  • All doctrine entries\n" +
+      "  • All attack plans & patterns\n" +
+      "  • All defense playbooks\n" +
+      "  • All match results & training jobs\n\n" +
+      "There is no undo. Are you absolutely sure?"
+    );
+    if (!confirmed) return;
+    setResetting(true);
+    setError(null);
+    try {
+      await resetAllData();
+      await refresh();
+    } catch (e) { setError(String(e)); } finally { setResetting(false); }
   };
 
   const handleDelete = async (id: string) => {
@@ -167,6 +189,34 @@ export default function SettingsPage() {
               <p className="text-dim text-xs">No active settings. Create one from scenario.</p>
             )}
           </Panel>
+        </div>
+
+        <div className="mt-8 border border-red-900/60 rounded p-5"
+             style={{ background: "rgba(180,20,20,0.06)" }}>
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <div className="text-red-400 font-mono font-bold tracking-widest text-sm mb-1">
+                ⚠ DANGER ZONE
+              </div>
+              <div className="text-xs text-dim max-w-lg">
+                Permanently wipes every record from the database — settings, doctrine, attack plans,
+                defense playbooks, match results, and training jobs. This action cannot be undone.
+              </div>
+            </div>
+            <button
+              onClick={handleResetAll}
+              disabled={resetting}
+              className="shrink-0 font-mono font-bold tracking-widest text-xs px-5 py-2 rounded border"
+              style={{
+                background: resetting ? "rgba(180,20,20,0.2)" : "rgba(180,20,20,0.15)",
+                borderColor: "rgba(200,30,30,0.7)",
+                color: resetting ? "#888" : "#f87171",
+                cursor: resetting ? "not-allowed" : "pointer",
+              }}
+            >
+              {resetting ? "◌ RESETTING..." : "✕ RESET ALL DATA"}
+            </button>
+          </div>
         </div>
       </main>
     </div>

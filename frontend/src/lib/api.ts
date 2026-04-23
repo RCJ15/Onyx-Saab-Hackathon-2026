@@ -202,6 +202,8 @@ export const activateSettings = (id: string) =>
   fetchAPI<{ activated: string }>(`/settings/${id}/activate`, { method: "POST" });
 export const deleteSettings = (id: string) =>
   fetchAPI<{ deleted: string }>(`/settings/${id}`, { method: "DELETE" });
+export const resetAllData = () =>
+  fetchAPI<{ reset: boolean }>("/settings/reset-all", { method: "POST" });
 
 // ==== Attack plans ====
 
