@@ -43,6 +43,7 @@ export default function KnowledgePage() {
   const [selectedPlaybook, setSelectedPlaybook] = useState<DefensePlaybook | null>(null);
   const [matches, setMatches] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"doctrine" | "patterns" | "playbooks" | "matches">("doctrine");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -51,13 +52,16 @@ export default function KnowledgePage() {
 
   const setters = { setCounts, setDoctrine, setPatterns, setPlaybooks, setMatches };
 
-  const revalidate = () =>
-    getKnowledgeBundle(50)
+  const revalidate = () => {
+    setLoading(true);
+    return getKnowledgeBundle(50)
       .then((b) => {
         setCached(BUNDLE_KEY, b);
         applyBundle(b, setters);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  };
 
   const loadAll = (force = false) => {
     if (force) invalidate("kb");
@@ -94,7 +98,7 @@ export default function KnowledgePage() {
               DOCTRINE · PATTERNS · PLAYBOOKS · MATCHES
             </p>
           </div>
-          <button onClick={onRefresh} className="mil-btn mil-btn-sm">↻ REFRESH</button>
+          <button onClick={onRefresh} className="mil-btn mil-btn-sm" disabled={loading}>↻ REFRESH</button>
         </div>
 
         {error && (
@@ -139,6 +143,13 @@ export default function KnowledgePage() {
             </button>
           ))}
         </div>
+
+        {loading && (
+          <span className="text-[10px] font-mono text-dim animate-pulse tracking-widest" 
+            style={{fontSize: "20px"}}>
+              ◈ CURRENTLY SYNCING KNOWLEDGE DATABASE. PLEASE HOLD...
+          </span>
+        )}
 
         {tab === "doctrine" && (
           <Panel title={`DOCTRINE ENTRIES (${doctrine.length})`}>
